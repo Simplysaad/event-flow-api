@@ -1,5 +1,6 @@
 function attendanceMiddleware(req, res, next) {
     let { currentUser } = req;
+    console.log(req)
     if (!currentUser) {
         return res.status(401).json({
             success: false,

@@ -135,10 +135,13 @@ router.post("/events/:eventId/attendance", async (req, res, next) => {
             { $addToSet: { attendees: currentUser._id } },
             { new: true }
         ).populate("attendees");
+        
         req.currentUser = currentUser;
         
-        req.io.emit("attendance", {attendees: currentEvent.attendees});
         
+        
+        req.io.emit("attendance", { attendees: currentEvent.attendees });
+
         return res.status(201).json({
             success: true,
             message: "attendance registered successfully",
@@ -201,19 +204,18 @@ router.post("/register", async (req, res, next) => {
             password: hashedPassword
         });
         await newUser.save();
-        jwt.sign(newUser, process.env.SECRET_KEY, (err, token) => {
+        jwt.sign({newUser}, process.env.SECRET_KEY, (err, token) => {
             if (!err) {
                 console.log(token);
                 req.token = token;
-            }
+                res.cookie("token", token)
+            } else return next(err);
         });
-        return res
-            .status(201)
-            .json({
-                success: true,
-                message: "organizer registered successfully",
-                newUser
-            });
+        return res.status(201).json({
+            success: true,
+            message: "organizer registered successfully",
+            newUser
+        });
     } catch (err) {
         console.error("Error registering organizer", err);
         next(err);
@@ -242,6 +244,7 @@ router.post("/login", async (req, res, next) => {
                 .status(404)
                 .json({ success: false, message: "user not found" });
         }
+        console.log("currentUser", currentUser);
         let isPasswordCorrect = await bcrypt.compare(
             password,
             currentUser.password
@@ -251,24 +254,22 @@ router.post("/login", async (req, res, next) => {
                 .status(403)
                 .json({ success: false, message: "invalid credentials" });
         }
-        jwt.sign(currentUser, process.env.SECRET_KEY, (err, token) => {
+        jwt.sign({currentUser}, process.env.SECRET_KEY, (err, token) => {
             if (!err) {
                 console.log(token);
                 req.token = token;
-            }
+                res.cookie("token", token)
+            } else return next(err);
         });
-        return res
-            .status(200)
-            .json({
-                success: true,
-                message: "user logged in successfully",
-                currentUser
-            });
+        return res.status(200).json({
+            success: true,
+            message: "user logged in successfully",
+            currentUser
+        });
     } catch (err) {
         console.error("Error:", err);
         next(err);
     }
 });
 
-module.exports = router;
 module.exports = router;

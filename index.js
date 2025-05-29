@@ -1,6 +1,11 @@
 const express = require("express");
 const app = express();
 
+const mongoStore = require("connect-mongo");
+const session = require("express-session");
+const morgan = require("morgan");
+const cookieParser = require("cookie-parser");
+
 const { Server: socketServer } = require("socket.io");
 
 const http = require("http");
@@ -29,8 +34,12 @@ app.use((req, res, next) => {
     req.io = io;
     next();
 });
+
+app.use(cookieParser())
 const errorHandler = require("./Server/Utils/error.middleware.js");
 app.use(errorHandler);
+
+app.use(morgan("dev"));
 
 app.use(
     express.urlencoded({

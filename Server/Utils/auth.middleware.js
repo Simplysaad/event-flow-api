@@ -1,8 +1,10 @@
 const jwt = require("jsonwebtoken");
 function authMiddleware(req, res, next) {
-    let { token } = req.session;
+    let { token } = req.cookies;
+
+    console.log(req);
     if (!token) {
-        return res.status(404).json({
+        return res.status(401).json({
             success: false,
             message: "token not available, user not logged in"
         });
@@ -27,3 +29,5 @@ function authMiddleware(req, res, next) {
         }
     });
 }
+
+module.exports = authMiddleware;
