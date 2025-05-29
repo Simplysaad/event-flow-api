@@ -1,0 +1,31 @@
+{
+    "name": "event-flow",
+    "version": "2.0.0",
+    "main": "index.js",
+    "scripts": {
+        "dev": "nodemon index",
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "start": "node --watch index"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/simplysaad/event-handler.git"
+    },
+    "author": "simplysaad",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/simplysaad/event-handler/issues"
+    },
+    "homepage": "https://github.com/simplysaad/event-handler#readme",
+    "description": "",
+    "dependencies": {
+        "bcryptjs": "^3.0.2",
+        "connect-mongo": "^5.1.0",
+        "dotenv": "^16.5.0",
+        "express": "^5.1.0",
+        "jsonwebtoken": "^9.0.2",
+        "mongoose": "^8.15.1",
+        "socket": "^0.15.34",
+        "socket.io": "^4.8.1"
+    }
+}
