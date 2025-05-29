@@ -9,14 +9,14 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/simplysaad/event-handler.git"
+        "url": "git+https://github.com/simplysaad/event-flow-api.git"
     },
     "author": "simplysaad",
     "license": "ISC",
     "bugs": {
-        "url": "https://github.com/simplysaad/event-handler/issues"
+        "url": "https://github.com/simplysaad/event-flow-api/issues"
     },
-    "homepage": "https://github.com/simplysaad/event-handler#readme",
+    "homepage": "https://github.com/simplysaad/event-flow-api#readme",
     "description": "",
     "dependencies": {
         "bcryptjs": "^3.0.2",
