@@ -11,6 +11,7 @@ const router = express.Router();
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose");
 
 const cloudinary = require("cloudinary").v2;
 cloudinary.config({
@@ -20,19 +21,7 @@ cloudinary.config({
 });
 
 const multer = require("multer");
-const uploadProducts = multer({ dest: "./Uploads/media" });
-const conditionalMulter = (req, res, next) => {
-    if (!req.file) {
-        return next();
-    } else {
-        uploadProducts.single("eventImage")(req, res, err => {
-            if (err) {
-                return next(err);
-            }
-            next();
-        });
-    }
-};
+const upload = multer({ dest: "./Uploads/media" });
 
 const Events = require("../Models/event.model.js");
 const Users = require("../Models/user.model.js");
@@ -49,19 +38,32 @@ const attendanceMiddleware = require("../Utils/attendance.middleware.js");
  * @param {Object} req.body - Event details.
  * @returns {Object} Newly created event.
  */
+
+router.get("/", async (req, res) => {
+    try {
+        return res
+            .status(304)
+            .redirect("https://campuscrave-lu04.onrender.com/");
+    } catch (err) {
+        console.error("Error:", err);
+    }
+});
 router.post(
     "/events",
     authMiddleware,
-    uploadProducts.single("eventImage"),
+    upload.single("eventImage"),
     async (req, res, next) => {
         try {
-            // if (!req.body) {
-            //     return res
-            //         .status(400)
-            //         .json({ success: false, message: "nothing is being sent" });
-            // }
-            let imageUrl;
-            
+            if (!req.body) {
+                return res
+                    .status(400)
+                    .json({ success: false, message: "nothing is being sent" });
+            }
+
+            req.body.schedule?.forEach(item => {
+                item.time = joinDateTime(req.body.date, item.time);
+            });
+            let logo;
             console.log("req.file", req.file);
             console.log("req.body", req.body);
             //  if (req.file) {
@@ -70,17 +72,18 @@ router.post(
                 {
                     folder: req.body.name.split(" ").join("-"),
                     aspect_ratio: "1:1",
-                    width: 400,
+                    width: 500,
                     crop: "limit"
                 }
             );
-            imageUrl = cloudinary_response.secure_url;
-            console.log(imageUrl);
+            logo = cloudinary_response.secure_url;
+            console.log(logo);
             //   }
 
             let newEvent = new Events({
                 ...req.body,
-                logo: imageUrl,
+                logo: logo,
+                "req.file": req.file,
                 organizerId: req.currentUser._id
             });
 
@@ -115,34 +118,53 @@ router.post(
  * @param {Object} req.body - Updated event details.
  * @returns {Object} Updated event.
  */
-router.put("/events/:eventId", authMiddleware, async (req, res, next) => {
-    try {
-        if (!req.body) {
-            return res
-                .status(400)
-                .json({ success: false, message: "nothing is being sent" });
-        }
-        req.body.schedule?.forEach(item => {
-            item.time = joinDateTime(req.body.date, item.time);
-        });
-        let { eventId } = req.params;
-        if (eventId) {
-            let updatedEvent = await Events.findOneAndUpdate(
-                { _id: eventId },
-                { $set: { ...req.body } },
-                { new: true }
-            );
-            return res.status(201).json({
-                success: true,
-                message: "event updated successfully",
-                updatedEvent
+router.put(
+    "/events/:eventId",
+    upload.single("eventImage"),
+    async (req, res, next) => {
+        try {
+            if (!req.body) {
+                return res
+                    .status(400)
+                    .json({ success: false, message: "nothing is being sent" });
+            }
+            req.body.schedule?.forEach(item => {
+                item.time = joinDateTime(req.body.date, item.time);
             });
+
+            if (req.file) {
+                const cloudinary_response = await cloudinary.uploader.upload(
+                    req.file.path,
+                    {
+                        folder: req.body.name.split(" ").join("-"),
+                        aspect_ratio: "1:1",
+                        width: 500,
+                        crop: "limit"
+                    }
+                );
+                logo = cloudinary_response.secure_url;
+                console.log(logo);
+            }
+
+            let { eventId } = req.params;
+            if (eventId) {
+                let updatedEvent = await Events.findOneAndUpdate(
+                    { _id: eventId },
+                    { $set: { ...req.body, logo } },
+                    { new: true }
+                );
+                return res.status(201).json({
+                    success: true,
+                    message: "event updated successfully",
+                    updatedEvent
+                });
+            }
+        } catch (err) {
+            console.error("Error updating event details:", err);
+            next(err);
         }
-    } catch (err) {
-        console.error("Error updating event details:", err);
-        next(err);
     }
-});
+);
 
 /**
  * Get event details for the dashboard.
@@ -157,9 +179,14 @@ router.get(
     authMiddleware,
     async (req, res, next) => {
         try {
+            if (!mongoose.Types.ObjectId.isValid(req.params.eventId)) {
+                return res.status(400).send("Invalid event ID");
+            }
+
             const currentEvent = await Events.findOne({
                 _id: req.params.eventId
             }).populate("attendees");
+
             return res.status(200).json({
                 success: true,
                 message: "event retrieved successfully",
@@ -222,16 +249,24 @@ router.post("/events/:eventId/attendance", async (req, res, next) => {
 //router.get("/events/:eventId", attendanceMiddleware, async (req, res, next) => {
 router.get("/events/:eventId", async (req, res, next) => {
     try {
+        let { eventId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(eventId)) {
+            return res.status(400).send("Invalid event ID");
+        }
+
         const currentEvent = await Events.findOne({
-            _id: req.params.eventId
-        });
-if(!currentEvent){
-  return res.status(400).json({
-            success: false,
-            message: "error retrieving event",
-            
-        });
-}
+            _id: eventId
+        }).populate("attendees");
+        console.log("currentEvent:", currentEvent);
+
+        if (!currentEvent) {
+            return res.status(400).json({
+                success: false,
+                message: "error retrieving event"
+            });
+        }
+
         return res.status(200).json({
             success: true,
             message: "event retrieved successfully",
