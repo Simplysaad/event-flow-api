@@ -12,10 +12,32 @@ const router = express.Router();
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
+const cloudinary = require("cloudinary").v2;
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+const multer = require("multer");
+const uploadProducts = multer({ dest: "./Uploads/media" });
+const conditionalMulter = (req, res, next) => {
+    if (!req.file) {
+        return next();
+    } else {
+        uploadProducts.single("eventImage")(req, res, err => {
+            if (err) {
+                return next(err);
+            }
+            next();
+        });
+    }
+};
+
 const Events = require("../Models/event.model.js");
 const Users = require("../Models/user.model.js");
 
-const { joinDateTime } = require("../utils/helper.js");
+const { joinDateTime } = require("../Utils/helper.js");
 const authMiddleware = require("../Utils/auth.middleware.js");
 const attendanceMiddleware = require("../Utils/attendance.middleware.js");
 
@@ -27,25 +49,62 @@ const attendanceMiddleware = require("../Utils/attendance.middleware.js");
  * @param {Object} req.body - Event details.
  * @returns {Object} Newly created event.
  */
-router.post("/events", authMiddleware, async (req, res, next) => {
-    try {
-        if (!req.body) {
-            return res
-                .status(400)
-                .json({ success: false, message: "nothing is being sent" });
+router.post(
+    "/events",
+    authMiddleware,
+    uploadProducts.single("eventImage"),
+    async (req, res, next) => {
+        try {
+            // if (!req.body) {
+            //     return res
+            //         .status(400)
+            //         .json({ success: false, message: "nothing is being sent" });
+            // }
+            let imageUrl;
+            
+            console.log("req.file", req.file);
+            console.log("req.body", req.body);
+            //  if (req.file) {
+            const cloudinary_response = await cloudinary.uploader.upload(
+                req.file.path,
+                {
+                    folder: req.body.name.split(" ").join("-"),
+                    aspect_ratio: "1:1",
+                    width: 400,
+                    crop: "limit"
+                }
+            );
+            imageUrl = cloudinary_response.secure_url;
+            console.log(imageUrl);
+            //   }
+
+            let newEvent = new Events({
+                ...req.body,
+                logo: imageUrl,
+                organizerId: req.currentUser._id
+            });
+
+            await newEvent.save();
+
+            let updatedUser = await Users.findOneAndUpdate(
+                { _id: req.currentUser._id },
+                {
+                    $addToSet: { eventsCreated: newEvent._id }
+                },
+                { new: true }
+            );
+
+            return res.status(201).json({
+                success: true,
+                message: "event created successfully",
+                newEvent
+            });
+        } catch (err) {
+            console.error("Error registering event:", err);
+            next(err);
         }
-        let newEvent = new Events({ ...req.body });
-        await newEvent.save();
-        return res.status(201).json({
-            success: true,
-            message: "event created successfully",
-            newEvent
-        });
-    } catch (err) {
-        console.error("Error registering event:", err);
-        next(err);
     }
-});
+);
 
 /**
  * Update an existing event.
@@ -70,7 +129,8 @@ router.put("/events/:eventId", authMiddleware, async (req, res, next) => {
         if (eventId) {
             let updatedEvent = await Events.findOneAndUpdate(
                 { _id: eventId },
-                { $set: { ...req.body } }
+                { $set: { ...req.body } },
+                { new: true }
             );
             return res.status(201).json({
                 success: true,
@@ -135,12 +195,10 @@ router.post("/events/:eventId/attendance", async (req, res, next) => {
             { $addToSet: { attendees: currentUser._id } },
             { new: true }
         ).populate("attendees");
-        
+
         req.currentUser = currentUser;
-        
-        
-        
-        req.io.emit("attendance", { attendees: currentEvent.attendees });
+
+        req.io.emit("attendance", { newAttendee: currentUser._id });
 
         return res.status(201).json({
             success: true,
@@ -161,12 +219,19 @@ router.post("/events/:eventId/attendance", async (req, res, next) => {
  * @param {string} eventId - ID of the event.
  * @returns {Object} Event details.
  */
-router.get("/events/:eventId", attendanceMiddleware, async (req, res, next) => {
+//router.get("/events/:eventId", attendanceMiddleware, async (req, res, next) => {
+router.get("/events/:eventId", async (req, res, next) => {
     try {
         const currentEvent = await Events.findOne({
             _id: req.params.eventId
         });
-
+if(!currentEvent){
+  return res.status(400).json({
+            success: false,
+            message: "error retrieving event",
+            
+        });
+}
         return res.status(200).json({
             success: true,
             message: "event retrieved successfully",
@@ -204,12 +269,13 @@ router.post("/register", async (req, res, next) => {
             password: hashedPassword
         });
         await newUser.save();
-        jwt.sign({newUser}, process.env.SECRET_KEY, (err, token) => {
-            if (!err) {
-                console.log(token);
-                req.token = token;
-                res.cookie("token", token)
-            } else return next(err);
+        let token = jwt.sign({ ...newUser }, process.env.SECRET_KEY, {
+            expiresIn: "1d"
+        });
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 24 * 60 * 60 * 1000
         });
         return res.status(201).json({
             success: true,
@@ -238,7 +304,7 @@ router.post("/login", async (req, res, next) => {
                 .json({ success: false, message: "nothing is being sent" });
         }
         let { emailAddress, password } = req.body;
-        let currentUser = await Users.findOne({ emailAddress });
+        let currentUser = await Users.findOne({ emailAddress }).lean();
         if (!currentUser) {
             return res
                 .status(404)
@@ -254,13 +320,15 @@ router.post("/login", async (req, res, next) => {
                 .status(403)
                 .json({ success: false, message: "invalid credentials" });
         }
-        jwt.sign({currentUser}, process.env.SECRET_KEY, (err, token) => {
-            if (!err) {
-                console.log(token);
-                req.token = token;
-                res.cookie("token", token)
-            } else return next(err);
+        let token = jwt.sign({ ...currentUser }, process.env.SECRET_KEY, {
+            expiresIn: "1d"
         });
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 24 * 60 * 60 * 1000
+        });
+
         return res.status(200).json({
             success: true,
             message: "user logged in successfully",

@@ -5,20 +5,19 @@ const eventSchema = new mongoose.Schema({
         required: true
     },
     organizerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "user"
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user"
     },
     category: {
         type: String
         //enum: ["summit", "competition", "show", "ceremony"],
         //default: "show"
     },
-    media: [
-        {
-            type: String,
-            default: "https://placehold.co/400"
-        }
-    ],
+    logo: {
+        type: String,
+        default: "https://placehold.co/400"
+    },
+
     tickets: [
         {
             title: {
@@ -54,7 +53,7 @@ const eventSchema = new mongoose.Schema({
         type: String,
         default: "a very outstanding event"
     },
-    dateTime: {
+    date: {
         type: Date
     },
     attendees: [
@@ -123,5 +122,5 @@ example = {
     ]
 };
 
-const event = new mongoose.model("event", eventSchema)
+const event = new mongoose.model("event", eventSchema);
 module.exports = event;
